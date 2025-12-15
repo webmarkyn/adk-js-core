@@ -41,6 +41,7 @@ export {Runner} from './runner/runner.js';
 export {InMemorySessionService} from './sessions/in_memory_session_service.js';
 export {createSession} from './sessions/session.js';
 export type {Session} from './sessions/session.js';
+export {State} from './sessions/state.js';
 export {AgentTool} from './tools/agent_tool.js';
 export {BaseTool} from './tools/base_tool.js';
 export {BaseToolset} from './tools/base_toolset.js';
