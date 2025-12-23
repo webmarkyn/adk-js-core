@@ -67,20 +67,20 @@ describe('BaseLlm', () => {
 describe('isBaseLlm', () => {
   it('should return true for BaseLlm', () => {
     const llm = new TestLlm();
-    expect(isBaseLlm(llm)).toBeTrue();
+    expect(isBaseLlm(llm)).toBe(true);
   });
 
   it('should return false for non-BaseLlm', () => {
-    expect(isBaseLlm(123)).toBeFalse();
+    expect(isBaseLlm(123)).toBe(false);
   });
 
   it('should return false for null', () => {
     expect(isBaseLlm({
       model: 'test-llm',
-    })).toBeFalse();
+    })).toBe(false);
   });
 
   it('should return false for FakeLlm instance (not extending BaseLlm)', () => {
-    expect(isBaseLlm(new FakeLlm())).toBeFalse();
+    expect(isBaseLlm(new FakeLlm())).toBe(false);
   });
 });
