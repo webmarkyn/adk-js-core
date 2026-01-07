@@ -85,6 +85,11 @@ export class Runner {
           await this.sessionService.getSession({appName: this.appName, userId, sessionId});
 
       if (!session) {
+        if (!this.appName) {
+          throw new Error(
+            `Session lookup failed: appName must be provided in runner constructor`
+          );
+        }
         throw new Error(`Session not found: ${sessionId}`);
       }
 
