@@ -1,0 +1,104 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import { Type } from "@google/genai";
+import { LlmAgent } from "../agents/llm_agent.js";
+import { InMemoryMemoryService } from "../memory/in_memory_memory_service.js";
+import { Runner } from "../runner/runner.js";
+import { InMemorySessionService } from "../sessions/in_memory_session_service.js";
+import { GoogleLLMVariant } from "../utils/variant_utils.js";
+import { BaseTool } from "./base_tool.js";
+import { ForwardingArtifactService } from "./forwarding_artifact_service.js";
+class AgentTool extends BaseTool {
+  constructor(config) {
+    super(
+      { name: config.agent.name, description: config.agent.description || "" }
+    );
+    this.agent = config.agent;
+    this.skipSummarization = config.skipSummarization || false;
+  }
+  _getDeclaration() {
+    let declaration;
+    if (this.agent instanceof LlmAgent && this.agent.inputSchema) {
+      declaration = {
+        name: this.name,
+        description: this.description,
+        // TODO(b/425992518): We should not use the agent's input schema as is.
+        // It should be validated and possibly transformed. Consider similar
+        // logic to one we have in Python ADK.
+        parameters: this.agent.inputSchema
+      };
+    } else {
+      declaration = {
+        name: this.name,
+        description: this.description,
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            "request": {
+              type: Type.STRING
+            }
+          },
+          required: ["request"]
+        }
+      };
+    }
+    if (this.apiVariant !== GoogleLLMVariant.GEMINI_API) {
+      const hasOutputSchema = this.agent instanceof LlmAgent && this.agent.outputSchema;
+      declaration.response = hasOutputSchema ? { type: Type.OBJECT } : { type: Type.STRING };
+    }
+    return declaration;
+  }
+  async runAsync({ args, toolContext }) {
+    var _a, _b;
+    if (this.skipSummarization) {
+      toolContext.actions.skipSummarization = true;
+    }
+    const hasInputSchema = this.agent instanceof LlmAgent && this.agent.inputSchema;
+    const content = {
+      role: "user",
+      parts: [
+        {
+          // TODO(b/425992518): Should be validated. Consider similar
+          // logic to one we have in Python ADK.
+          text: hasInputSchema ? JSON.stringify(args) : args["request"]
+        }
+      ]
+    };
+    const runner = new Runner({
+      appName: this.agent.name,
+      agent: this.agent,
+      artifactService: new ForwardingArtifactService(toolContext),
+      sessionService: new InMemorySessionService(),
+      memoryService: new InMemoryMemoryService(),
+      credentialService: toolContext.invocationContext.credentialService
+    });
+    const session = await runner.sessionService.createSession({
+      appName: this.agent.name,
+      userId: "tmp_user",
+      state: toolContext.state.toRecord()
+    });
+    let lastEvent;
+    for await (const event of runner.runAsync({
+      userId: session.userId,
+      sessionId: session.id,
+      newMessage: content
+    })) {
+      if (event.actions.stateDelta) {
+        toolContext.state.update(event.actions.stateDelta);
+      }
+      lastEvent = event;
+    }
+    if (!((_b = (_a = lastEvent == null ? void 0 : lastEvent.content) == null ? void 0 : _a.parts) == null ? void 0 : _b.length)) {
+      return "";
+    }
+    const hasOutputSchema = this.agent instanceof LlmAgent && this.agent.outputSchema;
+    const mergedText = lastEvent.content.parts.map((part) => part.text).filter((text) => text).join("\n");
+    return hasOutputSchema ? JSON.parse(mergedText) : mergedText;
+  }
+}
+export {
+  AgentTool
+};

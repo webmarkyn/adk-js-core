@@ -1,0 +1,28 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import { isGemini2OrAbove } from "../utils/model_name.js";
+import { BaseCodeExecutor } from "./base_code_executor.js";
+class BuiltInCodeExecutor extends BaseCodeExecutor {
+  executeCode(params) {
+    return Promise.resolve({
+      stdout: "",
+      stderr: "",
+      outputFiles: []
+    });
+  }
+  processLlmRequest(llmRequest) {
+    if (llmRequest.model && isGemini2OrAbove(llmRequest.model)) {
+      llmRequest.config = llmRequest.config || {};
+      llmRequest.config.tools = llmRequest.config.tools || [];
+      llmRequest.config.tools.push({ codeExecution: {} });
+      return;
+    }
+    throw new Error("Gemini code execution tool is not supported for model ".concat(llmRequest.model));
+  }
+}
+export {
+  BuiltInCodeExecutor
+};

@@ -1,0 +1,77 @@
+/**
+  * @license
+  * Copyright 2025 Google LLC
+  * SPDX-License-Identifier: Apache-2.0
+  */
+
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var parallel_agent_exports = {};
+__export(parallel_agent_exports, {
+  ParallelAgent: () => ParallelAgent
+});
+module.exports = __toCommonJS(parallel_agent_exports);
+var import_base_agent = require("./base_agent.js");
+var import_invocation_context = require("./invocation_context.js");
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+class ParallelAgent extends import_base_agent.BaseAgent {
+  async *runAsyncImpl(context) {
+    const agentRuns = this.subAgents.map(
+      (subAgent) => subAgent.runAsync(
+        createBranchCtxForSubAgent(this, subAgent, context)
+      )
+    );
+    for await (const event of mergeAgentRuns(agentRuns)) {
+      yield event;
+    }
+  }
+  async *runLiveImpl(context) {
+    throw new Error("This is not supported yet for ParallelAgent.");
+  }
+}
+function createBranchCtxForSubAgent(agent, subAgent, originalContext) {
+  const invocationContext = new import_invocation_context.InvocationContext(originalContext);
+  const branchSuffix = `${agent.name}.${subAgent.name}`;
+  invocationContext.branch = invocationContext.branch ? `${invocationContext.branch}.${branchSuffix}` : branchSuffix;
+  return invocationContext;
+}
+async function* mergeAgentRuns(agentRuns) {
+  const pendingPromises = /* @__PURE__ */ new Map();
+  for (const [index, generator] of agentRuns.entries()) {
+    const promise = generator.next().then((result) => ({ result, index }));
+    pendingPromises.set(index, promise);
+  }
+  while (pendingPromises.size > 0) {
+    const { result, index } = await Promise.race(pendingPromises.values());
+    if (result.done) {
+      pendingPromises.delete(index);
+      continue;
+    }
+    yield result.value;
+    const nextPromise = agentRuns[index].next().then((result2) => ({ result: result2, index }));
+    pendingPromises.set(index, nextPromise);
+  }
+}
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  ParallelAgent
+});

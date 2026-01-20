@@ -1,0 +1,133 @@
+/**
+  * @license
+  * Copyright 2025 Google LLC
+  * SPDX-License-Identifier: Apache-2.0
+  */
+
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var agent_tool_exports = {};
+__export(agent_tool_exports, {
+  AgentTool: () => AgentTool
+});
+module.exports = __toCommonJS(agent_tool_exports);
+var import_genai = require("@google/genai");
+var import_llm_agent = require("../agents/llm_agent.js");
+var import_in_memory_memory_service = require("../memory/in_memory_memory_service.js");
+var import_runner = require("../runner/runner.js");
+var import_in_memory_session_service = require("../sessions/in_memory_session_service.js");
+var import_variant_utils = require("../utils/variant_utils.js");
+var import_base_tool = require("./base_tool.js");
+var import_forwarding_artifact_service = require("./forwarding_artifact_service.js");
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+class AgentTool extends import_base_tool.BaseTool {
+  constructor(config) {
+    super(
+      { name: config.agent.name, description: config.agent.description || "" }
+    );
+    this.agent = config.agent;
+    this.skipSummarization = config.skipSummarization || false;
+  }
+  _getDeclaration() {
+    let declaration;
+    if (this.agent instanceof import_llm_agent.LlmAgent && this.agent.inputSchema) {
+      declaration = {
+        name: this.name,
+        description: this.description,
+        // TODO(b/425992518): We should not use the agent's input schema as is.
+        // It should be validated and possibly transformed. Consider similar
+        // logic to one we have in Python ADK.
+        parameters: this.agent.inputSchema
+      };
+    } else {
+      declaration = {
+        name: this.name,
+        description: this.description,
+        parameters: {
+          type: import_genai.Type.OBJECT,
+          properties: {
+            "request": {
+              type: import_genai.Type.STRING
+            }
+          },
+          required: ["request"]
+        }
+      };
+    }
+    if (this.apiVariant !== import_variant_utils.GoogleLLMVariant.GEMINI_API) {
+      const hasOutputSchema = this.agent instanceof import_llm_agent.LlmAgent && this.agent.outputSchema;
+      declaration.response = hasOutputSchema ? { type: import_genai.Type.OBJECT } : { type: import_genai.Type.STRING };
+    }
+    return declaration;
+  }
+  async runAsync({ args, toolContext }) {
+    var _a, _b;
+    if (this.skipSummarization) {
+      toolContext.actions.skipSummarization = true;
+    }
+    const hasInputSchema = this.agent instanceof import_llm_agent.LlmAgent && this.agent.inputSchema;
+    const content = {
+      role: "user",
+      parts: [
+        {
+          // TODO(b/425992518): Should be validated. Consider similar
+          // logic to one we have in Python ADK.
+          text: hasInputSchema ? JSON.stringify(args) : args["request"]
+        }
+      ]
+    };
+    const runner = new import_runner.Runner({
+      appName: this.agent.name,
+      agent: this.agent,
+      artifactService: new import_forwarding_artifact_service.ForwardingArtifactService(toolContext),
+      sessionService: new import_in_memory_session_service.InMemorySessionService(),
+      memoryService: new import_in_memory_memory_service.InMemoryMemoryService(),
+      credentialService: toolContext.invocationContext.credentialService
+    });
+    const session = await runner.sessionService.createSession({
+      appName: this.agent.name,
+      userId: "tmp_user",
+      state: toolContext.state.toRecord()
+    });
+    let lastEvent;
+    for await (const event of runner.runAsync({
+      userId: session.userId,
+      sessionId: session.id,
+      newMessage: content
+    })) {
+      if (event.actions.stateDelta) {
+        toolContext.state.update(event.actions.stateDelta);
+      }
+      lastEvent = event;
+    }
+    if (!((_b = (_a = lastEvent == null ? void 0 : lastEvent.content) == null ? void 0 : _a.parts) == null ? void 0 : _b.length)) {
+      return "";
+    }
+    const hasOutputSchema = this.agent instanceof import_llm_agent.LlmAgent && this.agent.outputSchema;
+    const mergedText = lastEvent.content.parts.map((part) => part.text).filter((text) => text).join("\n");
+    return hasOutputSchema ? JSON.parse(mergedText) : mergedText;
+  }
+}
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  AgentTool
+});

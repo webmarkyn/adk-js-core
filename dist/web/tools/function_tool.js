@@ -1,0 +1,73 @@
+/**
+ * @license
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import { Type } from "@google/genai";
+import {
+  ZodObject
+} from "zod";
+import { isZodObject, zodObjectToSchema } from "../utils/simple_zod_to_json.js";
+import { BaseTool } from "./base_tool.js";
+function toSchema(parameters) {
+  if (parameters === void 0) {
+    return { type: Type.OBJECT, properties: {} };
+  }
+  if (isZodObject(parameters)) {
+    return zodObjectToSchema(parameters);
+  }
+  return parameters;
+}
+class FunctionTool extends BaseTool {
+  /**
+   * The constructor acts as the user-friendly factory.
+   * @param options The configuration for the tool.
+   */
+  constructor(options) {
+    var _a;
+    const name = (_a = options.name) != null ? _a : options.execute.name;
+    if (!name) {
+      throw new Error(
+        "Tool name cannot be empty. Either name the `execute` function or provide a `name`."
+      );
+    }
+    super({
+      name,
+      description: options.description,
+      isLongRunning: options.isLongRunning
+    });
+    this.execute = options.execute;
+    this.parameters = options.parameters;
+  }
+  /**
+   * Provide a schema for the function.
+   */
+  _getDeclaration() {
+    return {
+      name: this.name,
+      description: this.description,
+      parameters: toSchema(this.parameters)
+    };
+  }
+  /**
+   * Logic for running the tool.
+   */
+  async runAsync(req) {
+    try {
+      let validatedArgs = req.args;
+      if (this.parameters instanceof ZodObject) {
+        validatedArgs = this.parameters.parse(req.args);
+      }
+      return await this.execute(
+        validatedArgs,
+        req.toolContext
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error("Error in tool '".concat(this.name, "': ").concat(errorMessage));
+    }
+  }
+}
+export {
+  FunctionTool
+};

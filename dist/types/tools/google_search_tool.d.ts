@@ -1,0 +1,18 @@
+import { BaseTool, RunAsyncToolRequest, ToolProcessLlmRequest } from './base_tool.js';
+/**
+ * A built-in tool that is automatically invoked by Gemini 2 models to retrieve
+ * search results from Google Search.
+ *
+ * This tool operates internally within the model and does not require or
+ * perform local code execution.
+ */
+declare class GoogleSearchTool extends BaseTool {
+    constructor();
+    runAsync(request: RunAsyncToolRequest): Promise<unknown>;
+    processLlmRequest({ toolContext, llmRequest }: ToolProcessLlmRequest): Promise<void>;
+}
+/**
+ * A global instance of GoogleSearchTool.
+ */
+export declare const GOOGLE_SEARCH: GoogleSearchTool;
+export {};
